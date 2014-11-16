@@ -1,0 +1,123 @@
+---
+title: "Personal Movement Pattern Analysis"
+
+author: "Simon Geletta"
+date: "November 11, 2014"
+output: html_document
+---
+
+This report explains the pattern of activities of an individual whose activities were recorded using a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+###Section 1 Q1: Importing the Data
+
+The first order of business is to read the data from a comma separated file and do some preliminary pre-processing. The following code will do so, and also output summary statistics.
+
+
+```{r}
+setwd("C:\\Users\\Simon\\Documents\\other\\data science\\ReprodResearch\\data")
+actdt<-read.csv("activity.csv")
+str(actdt)
+```
+###Section 1 Q2: Pre-Processing
+As could be seen from the above summary, the "date" field is a "factor". This does need to change to a date field. In addition, a pre-processing step involving "tidying" up the data by creating two summary tables. The first summary table makes "date" the basic (atomic) record. This is important to produce the  daily suumary (daily total and daily average records) statistics. The second creates a table with "interval" as the atomic record. This will provide the 5-minute-interval summary statistics. 
+To accomplish these transformations, I will load the data.table library/package
+
+```{r}
+library(data.table)
+actdt<-data.table(actdt)
+perday<-actdt[,list(totalSteps=sum(steps, na.rm=TRUE),
+            averageSteps=mean(steps, na.rm=TRUE)
+), by=date]
+
+perinterval<-actdt[,list(totalSteps=sum(steps, na.rm=TRUE),
+            averageSteps=mean(steps,na.rm=TRUE)
+), by=interval]
+
+str(perday)
+str(perinterval)
+```
+###Section 2 Describing the data
+For this part of the assignment the instruction is to ignore the missing values in the dataset. My report will be based on the pre-processed "daily" total records.
+
+#### Section 2 Q1: Histogram
+
+```{r, echo=FALSE}
+hist(perday$totalSteps, xlab="Steps", ylab="Total Step Count")
+
+```
+
+#### Section 2 Q2: Mean and Median steps
+
+```{r}
+actdt[,list(Mean_steps_per_day=mean(steps, na.rm=TRUE), Median_steps_per_day=median(steps, na.rm=TRUE))]
+```
+
+###Section 3: What is the average daily activity pattern?
+Here is the time series plot of the  5 minute interval (plotted on the x-axis), and the average steps across all days on the y-axis
+####Section 3 Q1: Time Series
+```{r}
+with(perinterval, plot(interval, averageSteps, type="l", xlab="5 minute intervals", ylab="Average steps", main="Daily Activity Pattern", col="blue"))
+```
+
+####Section 3 Q2: Which 5 minute interval contains the maximum number of stesp?
+To answer this question I will have to go back to the original (raw) data where steps are recorded on a 5-minutes interval basis. Here is the code that will give the correct output:
+
+```{r}
+subset(actdt, steps==max(steps, na.rm=TRUE))
+```
+As could be seen from the above R output, 806 steps were taken during the 615th interval which fell on November 27the 2012. That was the highest number of steps taken during any of the 5 minute intervals.
+
+###Analyzing missing values
+
+The following code shows how many missing values are in the "steps" variable. This is the only variable that contains missing values in the data.
+
+```{r}
+actdt[,.N, is.na(steps)]
+```
+
+###Imputing missing values
+
+I used the package called "mice" to perform this (it is real easy to use this). You of course need to install the package, after which you could do the following
+
+```{r}
+library(mice)
+ac<-mice(actdt, m=1)   ## Here the default method of "PPM" and m=1 used for simplicity      
+compdat<-complete(ac, "long", inc=TRUE)
+impdata<-subset(compdat, .imp==1)
+impdata<-data.table(impdata)
+perday2<-impdata[,list(totalSteps=sum(steps, na.rm=TRUE),
+                    averageSteps=mean(steps, na.rm=TRUE)
+), by=date]
+
+perinterval2<-impdata[,list(totalSteps=sum(steps, na.rm=TRUE),
+                         averageSteps=mean(steps,na.rm=TRUE)
+), by=interval]
+```
+
+
+Here is the distribution of steps after imputation of missing values with the result of the PPM model. The graph shows that the distribution is slightly more normal when the value of the missing information are guessed by the PPM model.
+
+```{r}
+hist(perday2$totalSteps, xlab="Steps", ylab="Total Step Count")
+
+```
+
+Here are the mean and median of the distribution after imputation of missing values with the result of the PPM model. The mean increased slightly, but the median is unchanged.
+
+```{r}
+impdata[,list(Mean_steps_per_day=mean(steps, na.rm=TRUE), Median_steps_per_day=median(steps, na.rm=TRUE))]
+```
+###Weekday vs. Weekend Activity Analysis
+To perform this analysis I will create a classification factor variable based on the variable "date" as follows:
+
+```{r}
+actdt$activityDay<-(ifelse(weekdays(as.POSIXct(actdt$date)) %in% c("Saturday", "Sunday"), "Weekends", "Weekdays"))
+```
+
+We will now compare the activities by whether they took place during the week-days or during the weekends. To do so, I will use ggplot2 so that the graphs are displayed as facets
+
+```{r}
+library(ggplot2)
+a<-ggplot(actdt, aes(steps)) + geom_histogram()
+a+facet_wrap(~activityDay)
+```
